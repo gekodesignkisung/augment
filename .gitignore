@@ -1,0 +1,8 @@
+node_modules
+.next
+.env.local
+data/conversations/*.json
+!data/conversations/.gitkeep
+data/patterns.json
+.DS_Store
+*.tsbuildinfo

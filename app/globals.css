@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+:root {
+  /* Paper metaphor — warm off-white, like a book page */
+  --bg: #faf8f3;
+  --bg-elev: #f4f1ea;
+  --bg-card: #ffffff;
+  --bg-hover: #efece4;
+  --border: #e5e1d6;
+  --border-strong: #c9c3b3;
+  --text: #1a1916;
+  --text-muted: #6b6657;
+  --text-dim: #a09a89;
+  --accent: #6d28d9;          /* deep ink purple — like a stamp */
+  --accent-soft: rgba(109, 40, 217, 0.08);
+  --user: #047857;            /* ink green */
+  --assistant: #1a1916;       /* main ink */
+  --note: #b45309;            /* margin note */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d6d1c2; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b8b29f; }
+
+code, pre {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.85em;
+}
+
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+a { cursor: pointer; }
+[role="button"], [data-clickable] { cursor: pointer; }
+
+/* Purple number — addressable paragraph marker, like a librarian's stamp */
+.purple-num {
+  color: var(--accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  opacity: 0.45;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+.purple-num:hover { opacity: 1; }
+
+/* Sentence — hoverable for branching */
+.sentence {
+  position: relative;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+.sentence:hover {
+  background: var(--accent-soft);
+}
+
+/* Portal-based tooltip bubble */
+.tooltip-bubble {
+  background: #1a1916;
+  color: #faf8f3;
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 400;
+  white-space: normal;
+  word-break: keep-all;
+  width: max-content;
+  max-width: 220px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  animation: fade-in 0.12s ease-out;
+}
+
+/* Legacy CSS-only tooltip — kept for fallback */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1916;
+  color: #faf8f3;
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 400;
+  white-space: normal;
+  word-break: keep-all;
+  width: max-content;
+  max-width: 200px;
+  text-align: center;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Tooltip variants — anchor differently to avoid clipping at edges */
+[data-tip-pos="below"]:hover::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+[data-tip-pos="below-left"]:hover::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  transform: none;
+}
+[data-tip-pos="below-right"]:hover::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: 0;
+  transform: none;
+}
+[data-tip-pos="left"]:hover::after {
+  bottom: 50%;
+  left: auto;
+  right: calc(100% + 6px);
+  transform: translateY(50%);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+.coach-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in 0.2s ease-out; }
+
+@keyframes node-flash {
+  0%   { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
+  100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+}
+.node-flash { animation: node-flash 1.2s ease-out; }
+
+/* Promoted node — purple ink stamp on the margin */
+.promoted {
+  border-left: 2px solid var(--accent) !important;
+}
