@@ -265,6 +265,16 @@ export default function Workbench() {
     setWhyOpen(true);
   };
 
+  // No conversation → fullscreen intro
+  if (!conv) {
+    return (
+      <div className="h-screen w-screen bg-[var(--bg)] text-[var(--text)]">
+        <EmptyState onNew={newConversation} openWhy={openWhy} list={list} onLoad={loadConversation} />
+        <WhyPanel open={whyOpen} topic={whyTopic} onClose={() => setWhyOpen(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen w-screen flex bg-[var(--bg)] text-[var(--text)]">
       {/* LEFT: Tree + conversation list */}
@@ -346,37 +356,33 @@ export default function Workbench() {
 
       {/* CENTER: Canvas */}
       <main className="flex-[3] flex flex-col min-w-0 relative">
-        {conv ? (
-          <CanvasPane
-            conv={conv}
-            activePathTo={activePathTo}
-            selectedId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            onBranchFromSnippet={startBranchFromSnippet}
-            onSend={sendMessage}
-            onTogglePromote={togglePromote}
-            busy={busy}
-            pendingBranchSnippet={pendingBranchSnippet}
-            onCancelBranch={() => setPendingBranchSnippet(null)}
-            coachSeen={coachSeen}
-            openWhy={openWhy}
-            flashId={flashId}
-            onCopyNodeId={copyNodeId}
-            onOpenJump={() => setJumpOpen(true)}
-            onRename={(title) => renameConversation(conv.id, title)}
-            onPatchNode={patchNode}
-            onOpenCompare={(seedNodeId) => {
-              setCompareSeed(seedNodeId ?? null);
-              setCompareOpen(true);
-            }}
-          />
-        ) : (
-          <EmptyState onNew={newConversation} openWhy={openWhy} />
-        )}
+        <CanvasPane
+          conv={conv}
+          activePathTo={activePathTo}
+          selectedId={selectedNodeId}
+          onSelectNode={onSelectNode}
+          onBranchFromSnippet={startBranchFromSnippet}
+          onSend={sendMessage}
+          onTogglePromote={togglePromote}
+          busy={busy}
+          pendingBranchSnippet={pendingBranchSnippet}
+          onCancelBranch={() => setPendingBranchSnippet(null)}
+          coachSeen={coachSeen}
+          openWhy={openWhy}
+          flashId={flashId}
+          onCopyNodeId={copyNodeId}
+          onOpenJump={() => setJumpOpen(true)}
+          onRename={(title) => renameConversation(conv.id, title)}
+          onPatchNode={patchNode}
+          onOpenCompare={(seedNodeId) => {
+            setCompareSeed(seedNodeId ?? null);
+            setCompareOpen(true);
+          }}
+        />
       </main>
 
       {/* RIGHT: ViewSpec */}
-      <aside className="flex-[3] min-w-0 border-l border-[var(--border)] bg-[var(--bg-elev)] flex flex-col">
+      <aside className="flex-[2] min-w-0 border-l border-[var(--border)] bg-[var(--bg-elev)] flex flex-col">
         <ViewSpecPane node={selectedNode} openWhy={openWhy} />
       </aside>
 
@@ -479,7 +485,7 @@ function ConvListItem({
           }}
           data-tip="이 대화를 삭제합니다"
           data-tip-pos="left"
-          className="absolute top-1/2 -translate-y-1/2 right-1.5 w-6 h-6 rounded text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--bg-card)] flex items-center justify-center text-[14px] opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute bottom-1 right-1.5 w-6 h-6 rounded text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--bg-card)] flex items-center justify-center text-[14px] opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label="대화 삭제"
         >
           ✕

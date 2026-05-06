@@ -257,10 +257,12 @@ export default function CanvasPane({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-10 py-8">
         <div className="max-w-2xl mx-auto space-y-6">
           {path.length <= 1 && (
-            <div className="text-[var(--text-muted)] leading-relaxed py-16 text-center">
-              <div className="mb-2 text-[16px] text-[var(--text)]">새로운 사고를 시작합니다.</div>
-              <div className="text-[14px]">
-                질문을 입력하세요. 답변을 받으면, 마음에 드는 문장에서 새 가지를 칠 수 있습니다.
+            <div className="flex items-center justify-center min-h-[calc(100%-4rem)]">
+              <div className="text-[var(--text-muted)] leading-relaxed text-center">
+                <div className="mb-2 text-[16px] text-[var(--text)]">새로운 사고를 시작합니다.</div>
+                <div className="text-[14px]">
+                  질문을 입력하세요. 답변을 받으면, 마음에 드는 문장에서 새 가지를 칠 수 있습니다.
+                </div>
               </div>
             </div>
           )}
@@ -345,7 +347,7 @@ export default function CanvasPane({
         className="px-6 pb-6 pt-4 relative bg-[var(--bg-elev)] border-t border-[var(--border)]"
       >
         <div className="max-w-2xl mx-auto relative">
-          <div className="relative bg-[var(--bg-hover)] border border-[var(--border-strong)] rounded-xl focus-within:border-[var(--accent)] transition-colors flex flex-col shadow-sm">
+          <div className="relative bg-white border border-[var(--border-strong)] rounded-xl focus-within:border-[var(--accent)] transition-colors flex flex-col shadow-sm">
             <textarea
               ref={textareaRef}
               value={draft}
