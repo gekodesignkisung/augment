@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { complete } from "@/lib/anthropic";
-import { bumpPattern } from "@/lib/storage";
 import type { ViewSpecKind } from "@/lib/types";
 
 const PROMPTS: Record<ViewSpecKind, string> = {
@@ -34,8 +33,6 @@ export async function POST(req: NextRequest) {
       messages: [{ role: "user", content: `${prompt}\n\n---\n${text}` }],
       maxTokens: 400,
     });
-
-    await bumpPattern({ viewSpecsUsed: 1, viewSpec: kind });
 
     return NextResponse.json({ kind, label: LABELS[kind], text: reply });
   } catch (e) {

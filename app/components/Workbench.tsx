@@ -11,6 +11,16 @@ import JumpPalette from "./JumpPalette";
 import NodeIndexPanel from "./NodeIndexPanel";
 import ComparePanel from "./ComparePanel";
 import { toast } from "./Toast";
+import {
+  addNode,
+  bumpPattern,
+  createConversation as createConv,
+  deleteConversation as deleteConv,
+  getConversation,
+  getPath,
+  listConversations,
+  saveConversation,
+} from "@/lib/clientStorage";
 
 type ConvSummary = { id: string; title: string; updatedAt: number; nodeCount: number };
 
@@ -32,8 +42,7 @@ export default function Workbench() {
 
   // Load conversation list
   const refreshList = useCallback(async () => {
-    const r = await fetch("/api/conversations");
-    setList(await r.json());
+    setList(await listConversations());
   }, []);
 
   useEffect(() => {
@@ -76,8 +85,9 @@ export default function Workbench() {
   }, []);
 
   const newConversation = async () => {
-    const r = await fetch("/api/conversations", { method: "POST", body: "{}" });
-    const c: Conversation = await r.json();
+    const c = createConv();
+    await saveConversation(c);
+    await bumpPattern({ conversationsCreated: 1 });
     setConv(c);
     setActivePathTo(c.rootId);
     setSelectedNodeId(null);
@@ -87,21 +97,17 @@ export default function Workbench() {
   const renameConversation = async (id: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    const r = await fetch(`/api/conversations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: trimmed }),
-    });
-    if (r.ok) {
-      const updated = await r.json();
-      if (conv?.id === id) setConv(updated);
-      refreshList();
-    }
+    const target = await getConversation(id);
+    if (!target) return;
+    target.title = trimmed.slice(0, 80);
+    await saveConversation(target);
+    if (conv?.id === id) setConv(target);
+    refreshList();
   };
 
   const deleteConversation = async (id: string) => {
     if (!confirm("이 대화를 삭제할까요? 되돌릴 수 없습니다.")) return;
-    await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    await deleteConv(id);
     if (conv?.id === id) {
       setConv(null);
       setActivePathTo(null);
@@ -111,10 +117,9 @@ export default function Workbench() {
   };
 
   const loadConversation = async (id: string) => {
-    const r = await fetch(`/api/conversations/${id}`);
-    const c: Conversation = await r.json();
+    const c = await getConversation(id);
+    if (!c) return;
     setConv(c);
-    // pick deepest leaf along promoted-or-newest path
     const leaf = pickDefaultLeaf(c);
     setActivePathTo(leaf);
     setSelectedNodeId(null);
@@ -126,37 +131,99 @@ export default function Workbench() {
     try {
       const parentId = activePathTo;
       const snippet = pendingBranchSnippet;
+
+      // Resolve any #id quotes in user text
+      const quoteIds: string[] = [];
+      const idRegex = /#([A-Za-z0-9_-]{6,12})/g;
+      let m: RegExpExecArray | null;
+      while ((m = idRegex.exec(text))) {
+        const qid = m[1];
+        if (conv.nodes[qid] && !quoteIds.includes(qid)) quoteIds.push(qid);
+      }
+      const quoteBlock =
+        quoteIds.length > 0
+          ? quoteIds
+              .map((qid) => {
+                const n = conv.nodes[qid];
+                const speaker = n.kind === "user" ? "당신" : "Augment";
+                return `[인용한 노드 #${qid} (${speaker}): "${n.text.slice(0, 600)}"]`;
+              })
+              .join("\n")
+          : "";
+
+      // Add user node locally
+      const isFirstUserMessage = !Object.values(conv.nodes).some((n) => n.kind === "user");
+      const userNode = addNode(conv, parentId, {
+        kind: "user",
+        text,
+        contextSnippet: snippet ?? undefined,
+      });
+
+      // Build messages from path
+      const path = getPath(conv, userNode.id);
+      const messages = path
+        .filter((n) => n.kind === "user" || n.kind === "assistant")
+        .map((n) => {
+          if (n.id !== userNode.id) {
+            return {
+              role: n.kind as "user" | "assistant",
+              content:
+                n.kind === "user" && n.contextSnippet
+                  ? `[이전 대화에서 인용한 문장: "${n.contextSnippet}"]\n\n${n.text}`
+                  : n.text,
+            };
+          }
+          const parts: string[] = [];
+          if (n.contextSnippet) parts.push(`[이전 대화에서 인용한 문장: "${n.contextSnippet}"]`);
+          if (quoteBlock) parts.push(quoteBlock);
+          parts.push(n.text);
+          return { role: "user" as const, content: parts.join("\n\n") };
+        });
+
+      // Call server (only for AI proxy)
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: conv.id,
-          parentId,
-          userText: text,
-          contextSnippet: snippet,
-        }),
+        body: JSON.stringify({ messages }),
       });
       const data = await r.json();
       if (data.error) {
         console.error("[chat error]", data.error);
-        if (data.error.includes("ANTHROPIC_API_KEY")) {
-          alert(
-            "Anthropic API 키가 설정되지 않았습니다.\n\n" +
-              "프로젝트 폴더(d:/AI code/augment)에 .env.local 파일을 만들고:\n" +
-              "ANTHROPIC_API_KEY=sk-ant-...\n\n" +
-              "을 추가한 뒤 dev 서버를 재시작하세요."
-          );
-        } else {
-          alert("오류: " + data.error);
-        }
-      } else {
-        setConv(data.conversation);
-        setActivePathTo(data.newAssistantNodeId);
-        setPendingBranchSnippet(null);
-        markCoach("first-message");
-        if (snippet) markCoach("first-branch");
-        refreshList();
+        alert("오류: " + data.error);
+        // rollback the user node
+        const parent = conv.nodes[parentId];
+        if (parent) parent.children = parent.children.filter((c) => c !== userNode.id);
+        delete conv.nodes[userNode.id];
+        return;
       }
+
+      const assistantNode = addNode(conv, userNode.id, {
+        kind: "assistant",
+        text: data.reply,
+      });
+
+      // Auto-title on first user message
+      if (isFirstUserMessage && (conv.title === "새 대화" || !conv.title.trim())) {
+        try {
+          const t = await fetch("/api/title", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userText: text }),
+          });
+          const td = await t.json();
+          if (td.title) conv.title = td.title;
+        } catch {}
+      }
+
+      await saveConversation(conv);
+      await bumpPattern({ nodesCreated: 2, branchesCreated: snippet ? 1 : 0 });
+
+      setConv({ ...conv });
+      setActivePathTo(assistantNode.id);
+      setPendingBranchSnippet(null);
+      markCoach("first-message");
+      if (snippet) markCoach("first-branch");
+      refreshList();
     } finally {
       setBusy(false);
     }
@@ -173,24 +240,29 @@ export default function Workbench() {
     patch: { memo?: string; tags?: string[]; pinned?: boolean }
   ) => {
     if (!conv) return;
-    const r = await fetch(`/api/nodes/${nodeId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: conv.id, ...patch }),
-    });
-    const data = await r.json();
-    if (data.conversation) setConv(data.conversation);
+    const node = conv.nodes[nodeId];
+    if (!node) return;
+    if (patch.memo !== undefined) node.memo = patch.memo.trim() || undefined;
+    if (patch.tags !== undefined) {
+      const cleaned = patch.tags
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0)
+        .slice(0, 24);
+      node.tags = cleaned.length ? cleaned : undefined;
+    }
+    if (patch.pinned !== undefined) node.pinned = patch.pinned || undefined;
+    await saveConversation(conv);
+    setConv({ ...conv });
   };
 
   const togglePromote = async (nodeId: string) => {
     if (!conv) return;
-    const r = await fetch("/api/promote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: conv.id, nodeId }),
-    });
-    const data = await r.json();
-    if (data.conversation) setConv(data.conversation);
+    const node = conv.nodes[nodeId];
+    if (!node) return;
+    node.promoted = !node.promoted;
+    await saveConversation(conv);
+    if (node.promoted) await bumpPattern({ promotions: 1 });
+    setConv({ ...conv });
   };
 
   const onSelectNode = (id: string) => {
@@ -228,12 +300,11 @@ export default function Workbench() {
         jumpToNode(nodeId);
         return;
       }
-      const r = await fetch(`/api/conversations/${targetConvId}`);
-      if (!r.ok) {
+      const c = await getConversation(targetConvId);
+      if (!c) {
         toast("대화를 찾을 수 없습니다", "error");
         return;
       }
-      const c: Conversation = await r.json();
       setConv(c);
       if (c.nodes[nodeId]) {
         setSelectedNodeId(nodeId);

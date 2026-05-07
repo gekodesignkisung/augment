@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Conversation, ConvNode } from "@/lib/types";
+import { listConversations, getConversation } from "@/lib/clientStorage";
 
 type Ref = { conversationId: string; nodeId: string; node: ConvNode; convTitle: string };
 
@@ -61,10 +62,8 @@ export default function ComparePanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          refs: [
-            { conversationId: a.conversationId, nodeId: a.nodeId },
-            { conversationId: b.conversationId, nodeId: b.nodeId },
-          ],
+          a: { id: a.nodeId, text: a.node.text, convTitle: a.convTitle },
+          b: { id: b.nodeId, text: b.node.text, convTitle: b.convTitle },
         }),
       });
       const data = await r.json();
@@ -223,29 +222,25 @@ function NodePicker({
 
   useEffect(() => {
     if (scope === "all") {
-      // Pull a broad set: pinned + tags listing returns nodes; we fetch all conversations directly
-      fetch("/api/conversations")
-        .then((r) => r.json())
-        .then(async (list: { id: string; title: string }[]) => {
-          const aggregate: typeof allNodes = [];
-          for (const item of list) {
-            const r = await fetch(`/api/conversations/${item.id}`);
-            if (!r.ok) continue;
-            const c: Conversation = await r.json();
-            for (const n of Object.values(c.nodes)) {
-              if (n.kind === "user" || n.kind === "assistant") {
-                aggregate.push({
-                  conversationId: c.id,
-                  conversationTitle: c.title,
-                  node: n,
-                });
-              }
+      (async () => {
+        const list = await listConversations();
+        const aggregate: typeof allNodes = [];
+        for (const item of list) {
+          const c = await getConversation(item.id);
+          if (!c) continue;
+          for (const n of Object.values(c.nodes)) {
+            if (n.kind === "user" || n.kind === "assistant") {
+              aggregate.push({
+                conversationId: c.id,
+                conversationTitle: c.title,
+                node: n,
+              });
             }
           }
-          aggregate.sort((a, b) => b.node.createdAt - a.node.createdAt);
-          setAllNodes(aggregate);
-        })
-        .catch(() => {});
+        }
+        aggregate.sort((a, b) => b.node.createdAt - a.node.createdAt);
+        setAllNodes(aggregate);
+      })().catch(() => {});
     }
   }, [scope]);
 

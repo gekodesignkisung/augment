@@ -2,12 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ConvNode } from "@/lib/types";
-
-type IndexedNode = {
-  conversationId: string;
-  conversationTitle: string;
-  node: ConvNode;
-};
+import { indexNodes, type IndexedNode } from "@/lib/clientStorage";
 
 type IndexResponse = {
   nodes: IndexedNode[];
@@ -29,8 +24,7 @@ export default function NodeIndexPanel({
 
   // initial load: pinned + all tags
   useEffect(() => {
-    fetch("/api/nodes/index?pinned=1")
-      .then((r) => r.json())
+    indexNodes({ pinnedOnly: true })
       .then((data: IndexResponse) => {
         setPinned(data.nodes);
         setTagsOnly(data.tags);
@@ -43,8 +37,7 @@ export default function NodeIndexPanel({
       setTaggedNodes([]);
       return;
     }
-    fetch(`/api/nodes/index?tag=${encodeURIComponent(activeTag)}`)
-      .then((r) => r.json())
+    indexNodes({ tag: activeTag })
       .then((data: IndexResponse) => setTaggedNodes(data.nodes))
       .catch(() => {});
   }, [activeTag, refreshKey]);

@@ -1,54 +1,59 @@
-import fs from "fs/promises";
-import path from "path";
+"use client";
+
+import Dexie, { type Table } from "dexie";
 import { nanoid } from "nanoid";
 import type { Conversation, ConvNode, UsagePattern } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const CONV_DIR = path.join(DATA_DIR, "conversations");
-const PATTERN_FILE = path.join(DATA_DIR, "patterns.json");
+class AugmentDB extends Dexie {
+  conversations!: Table<Conversation, string>;
+  patterns!: Table<UsagePattern & { id: "singleton" }, string>;
 
-async function ensureDirs() {
-  await fs.mkdir(CONV_DIR, { recursive: true });
+  constructor() {
+    super("augment");
+    this.version(1).stores({
+      conversations: "id, updatedAt, createdAt",
+      patterns: "id",
+    });
+  }
 }
 
-export async function listConversations(): Promise<Conversation[]> {
-  await ensureDirs();
-  const files = await fs.readdir(CONV_DIR);
-  const out: Conversation[] = [];
-  for (const f of files) {
-    if (!f.endsWith(".json")) continue;
-    try {
-      const raw = await fs.readFile(path.join(CONV_DIR, f), "utf-8");
-      out.push(JSON.parse(raw));
-    } catch {}
+let _db: AugmentDB | null = null;
+function db(): AugmentDB {
+  if (typeof window === "undefined") {
+    throw new Error("clientStorage is browser-only");
   }
-  return out.sort((a, b) => b.updatedAt - a.updatedAt);
+  if (!_db) _db = new AugmentDB();
+  return _db;
+}
+
+export type ConvSummary = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  nodeCount: number;
+};
+
+export async function listConversations(): Promise<ConvSummary[]> {
+  const all = await db().conversations.orderBy("updatedAt").reverse().toArray();
+  return all.map((c) => ({
+    id: c.id,
+    title: c.title,
+    updatedAt: c.updatedAt,
+    nodeCount: Object.keys(c.nodes).length,
+  }));
 }
 
 export async function getConversation(id: string): Promise<Conversation | null> {
-  await ensureDirs();
-  try {
-    const raw = await fs.readFile(path.join(CONV_DIR, `${id}.json`), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return (await db().conversations.get(id)) ?? null;
 }
 
 export async function saveConversation(conv: Conversation): Promise<void> {
-  await ensureDirs();
   conv.updatedAt = Date.now();
-  await fs.writeFile(
-    path.join(CONV_DIR, `${conv.id}.json`),
-    JSON.stringify(conv, null, 2),
-    "utf-8"
-  );
+  await db().conversations.put(conv);
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  try {
-    await fs.unlink(path.join(CONV_DIR, `${id}.json`));
-  } catch {}
+  await db().conversations.delete(id);
 }
 
 export function createConversation(title = "새 대화"): Conversation {
@@ -94,13 +99,13 @@ export function addNode(
 }
 
 export function getPath(conv: Conversation, nodeId: string): ConvNode[] {
-  const path: ConvNode[] = [];
+  const out: ConvNode[] = [];
   let cur: ConvNode | undefined = conv.nodes[nodeId];
   while (cur) {
-    path.unshift(cur);
+    out.unshift(cur);
     cur = cur.parentId ? conv.nodes[cur.parentId] : undefined;
   }
-  return path;
+  return out;
 }
 
 const DEFAULT_PATTERN: UsagePattern = {
@@ -114,13 +119,10 @@ const DEFAULT_PATTERN: UsagePattern = {
 };
 
 export async function getPattern(): Promise<UsagePattern> {
-  await ensureDirs();
-  try {
-    const raw = await fs.readFile(PATTERN_FILE, "utf-8");
-    return { ...DEFAULT_PATTERN, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULT_PATTERN };
-  }
+  const cur = await db().patterns.get("singleton");
+  if (!cur) return { ...DEFAULT_PATTERN };
+  const { id: _omit, ...rest } = cur;
+  return rest;
 }
 
 export async function bumpPattern(
@@ -143,6 +145,49 @@ export async function bumpPattern(
     next.viewSpecBreakdown[delta.viewSpec] =
       (next.viewSpecBreakdown[delta.viewSpec] ?? 0) + 1;
   }
-  await fs.writeFile(PATTERN_FILE, JSON.stringify(next, null, 2), "utf-8");
+  await db().patterns.put({ id: "singleton", ...next });
   return next;
+}
+
+// Cross-conversation node index — replaces /api/nodes/index
+export type IndexedNode = {
+  conversationId: string;
+  conversationTitle: string;
+  node: ConvNode;
+};
+
+export async function indexNodes({
+  tag,
+  pinnedOnly,
+}: {
+  tag?: string | null;
+  pinnedOnly?: boolean;
+}): Promise<{ nodes: IndexedNode[]; tags: { name: string; count: number }[] }> {
+  const all = await db().conversations.toArray();
+  const out: IndexedNode[] = [];
+  const tagCounts: Record<string, number> = {};
+
+  for (const conv of all) {
+    for (const n of Object.values(conv.nodes)) {
+      if (n.tags?.length) {
+        for (const t of n.tags) tagCounts[t] = (tagCounts[t] ?? 0) + 1;
+      }
+      if (tag && !(n.tags ?? []).includes(tag)) continue;
+      if (pinnedOnly && !n.pinned) continue;
+      if (!tag && !pinnedOnly) continue;
+      out.push({
+        conversationId: conv.id,
+        conversationTitle: conv.title,
+        node: n,
+      });
+    }
+  }
+
+  out.sort((a, b) => b.node.createdAt - a.node.createdAt);
+  return {
+    nodes: out,
+    tags: Object.entries(tagCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count),
+  };
 }
